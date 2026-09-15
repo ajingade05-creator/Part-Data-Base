@@ -1,6 +1,6 @@
 import pandas as pd
 import streamlit as st
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz
 import re
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
@@ -48,15 +48,12 @@ PRIMARY_SERIES_MAP = {}
 ALT_SERIES_MAP = {}
 
 if not df.empty:
-    # Identify primary part number column for the UI display
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
     primary_pn_col = pn_cols[0] if pn_cols else df.columns[1]
 
-    # Identify datasheet columns
     primary_ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link", "url"]) and not any(k in c.lower() for k in ["cherry", "alt"])]
     alt_ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link", "url"]) and any(k in c.lower() for k in ["cherry", "alt"])]
 
-    # Build fallback maps
     for _, r in df.iterrows():
         prefix = get_base_prefix(r[primary_pn_col])
         if prefix not in PRIMARY_SERIES_MAP:
@@ -79,27 +76,36 @@ max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 query = st.text_input("Enter Part Number or Standard:", placeholder="e.g., AF5141, CCR264, or NASM20605").strip()
 
 if query and not df.empty:
-    # Identify all columns that might contain a part number or standard to search against
     search_cols = [c for c in df.columns if any(k in c.lower() for k in ["part", "p/n", "standard"])]
-    
     search_records = {}
+    query_clean = query.lower()
 
-    # Scan through all relevant columns to find the highest match per row
+    # Smart Search: Prioritize Exact Substrings, fallback to Fuzzy Typos
     for col in search_cols:
         col_values = df[col].astype(str).tolist()
-        matches = process.extract(query, col_values, scorer=fuzz.WRatio, limit=50)
         
-        for match_str, score, row_idx in matches:
-            if float(score) >= float(similarity_threshold) and match_str.strip() not in ["", "-"]:
-                # If we found a better match for this row in this column, update it
+        for row_idx, val in enumerate(col_values):
+            val_str = val.strip()
+            if not val_str or val_str == "-":
+                continue
+            
+            val_clean = val_str.lower()
+            
+            # 1. Exact Substring Match (e.g. searching 'ccr264' hits 'CCR264-3-01PR' automatically)
+            if query_clean in val_clean:
+                score = 100.0
+            # 2. Fuzzy Match Backup (for typos)
+            else:
+                score = fuzz.WRatio(query_clean, val_clean)
+            
+            if score >= float(similarity_threshold):
                 if row_idx not in search_records or score > search_records[row_idx]['score']:
                     search_records[row_idx] = {
-                        'score': float(score), 
-                        'matched_term': match_str,
+                        'score': score, 
+                        'matched_term': val_str,
                         'matched_col': col
                     }
     
-    # Sort the combined results by highest score and limit to max_results
     filtered = sorted(search_records.items(), key=lambda x: x[1]['score'], reverse=True)[:int(max_results)]
     
     if filtered:
@@ -139,16 +145,14 @@ if query and not df.empty:
             if not alt_url:
                 alt_url = ALT_SERIES_MAP.get(prefix)
 
-            # Update expander title to show what specifically matched (e.g., if they searched NASM)
             expander_title = f"📌 **{primary_pn}** "
-            if matched_term != primary_pn:
+            if matched_term.upper() != primary_pn.upper():
                 expander_title += f"*(Matched via: {matched_term})* "
             expander_title += f"| Match Score: **{int(score)}%**"
 
             with st.expander(expander_title, expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -164,7 +168,6 @@ if query and not df.empty:
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} / MS (Equivalents)")
