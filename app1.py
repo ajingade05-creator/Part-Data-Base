@@ -1,7 +1,6 @@
 import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
-import urllib.request
 import re
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
@@ -19,39 +18,74 @@ st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.caption("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
-PUBHTML_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pubhtml?gid=0&single=true"
 
 @st.cache_data(ttl=2)
 def load_data():
     try:
         df = pd.read_csv(CSV_URL)
         df.columns = df.columns.str.strip()
-        df = df.fillna("")
-
-        # Extract all embedded href links directly from the published HTML DOM
-        req = urllib.request.Request(PUBHTML_URL, headers={'User-Agent': 'Mozilla/5.0'})
-        html_str = urllib.request.urlopen(req).read().decode('utf-8')
-        
-        raw_hrefs = re.findall(r'href=["\'](.*?)["\']', html_str)
-        cleaned_urls = []
-        for h in raw_hrefs:
-            if 'google.com/url?q=' in h:
-                h = h.split('google.com/url?q=')[1].split('&')[0]
-            if h.startswith("http") and "pubhtml" not in h and "google" not in h:
-                cleaned_urls.append(h)
-                
-        return df, cleaned_urls
+        return df.fillna("")
     except Exception as e:
-        st.error(f"Error loading database: {e}")
-        return pd.DataFrame(), []
+        st.error(f"Error loading database sheet: {e}")
+        return pd.DataFrame()
 
-df, extracted_urls = load_data()
+df = load_data()
+
+# Helper to extract clean base series prefix (e.g. 'AF5141' from 'AF5141-3-01PR')
+def get_series_prefix(pn):
+    pn = str(pn).strip()
+    match = re.match(r'^([A-Za-z0-9]+)', pn)
+    return match.group(1) if match else pn
+
+# Helper to pull the first valid URL from a column or cell
+def extract_url(val):
+    val = str(val).strip()
+    if val and val != "-" and not val.startswith("#"):
+        urls = re.findall(r'https?://[^\s,"]+', val)
+        if urls:
+            return urls[0]
+    return None
+
+# Build a lookup map of series prefix -> valid fallback URL for Primary & Alt datasheets
+PRIMARY_SERIES_MAP = {}
+ALT_SERIES_MAP = {}
+
+if not df.empty:
+    pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
+    target_col = pn_cols[0] if pn_cols else df.columns[1]
+
+    # Dynamically locate datasheet columns
+    primary_ds_col = None
+    alt_ds_col = None
+
+    for c in df.columns:
+        c_lower = c.lower()
+        if any(k in c_lower for k in ["sheet", "link", "url"]):
+            if any(k in c_lower for k in ["cherry", "alt"]):
+                alt_ds_col = c
+            else:
+                if not primary_ds_col:
+                    primary_ds_col = c
+
+    # Populate fallback maps across all rows
+    for _, r in df.iterrows():
+        prefix = get_series_prefix(r[target_col])
+        
+        if primary_ds_col:
+            p_url = extract_url(r[primary_ds_col])
+            if p_url and prefix not in PRIMARY_SERIES_MAP:
+                PRIMARY_SERIES_MAP[prefix] = p_url
+
+        if alt_ds_col:
+            a_url = extract_url(r[alt_ds_col])
+            if a_url and prefix not in ALT_SERIES_MAP:
+                ALT_SERIES_MAP[prefix] = a_url
 
 st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 30, 100, 75)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
-query = st.text_input("Enter Part Number:", placeholder="e.g., AF5141-3-12PR").strip()
+query = st.text_input("Enter Part Number:", placeholder="e.g., AF5141-3-01PR").strip()
 
 if query and not df.empty:
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
@@ -59,7 +93,6 @@ if query and not df.empty:
     
     part_numbers = df[target_col].astype(str).tolist()
     
-    # Strictly enforce slider threshold filtering
     raw_matches = process.extract(query, part_numbers, scorer=fuzz.WRatio, limit=50)
     filtered = [m for m in raw_matches if float(m[1]) >= float(similarity_threshold)][:int(max_results)]
     
@@ -67,41 +100,24 @@ if query and not df.empty:
         st.subheader(f"Results for '{query}':")
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
+            prefix = get_series_prefix(matched_pn)
             
-            primary_val = ""
-            alt_val = ""
-            
-            for col in df.columns:
-                c_lower = col.lower()
-                val = str(row[col]).strip()
-                if val and val != "-" and not val.startswith("#"):
-                    if any(k in c_lower for k in ["sheet", "link", "url"]):
-                        if any(k in c_lower for k in ["cherry", "alt"]):
-                            alt_val = val
-                        else:
-                            if not primary_val:
-                                primary_val = val
+            # Primary URL resolution with fallback
+            primary_val = row[primary_ds_col] if primary_ds_col else ""
+            primary_url = extract_url(primary_val)
+            if not primary_url:
+                primary_url = PRIMARY_SERIES_MAP.get(prefix)
 
-            # Resolve cell values against scraped HTML URLs or raw strings
-            def resolve_url(val):
-                if not val or val == "-":
-                    return None
-                urls = re.findall(r'https?://[^\s,"]+', val)
-                if urls:
-                    return urls[0]
-                for u in extracted_urls:
-                    clean_name = val.replace(" ", "").lower().replace(".pdf", "")
-                    if clean_name in u.lower():
-                        return u
-                return None
-
-            primary_url = resolve_url(primary_val)
-            alt_url = resolve_url(alt_val)
+            # Alternate URL resolution with fallback
+            alt_val = row[alt_ds_col] if alt_ds_col else ""
+            alt_url = extract_url(alt_val)
+            if not alt_url:
+                alt_url = ALT_SERIES_MAP.get(prefix)
 
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Manufacturer Panel
+                # Primary Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -112,12 +128,10 @@ if query and not df.empty:
                     st.markdown("---")
                     if primary_url:
                         st.link_button("📄 Open Primary Datasheet", primary_url, use_container_width=True)
-                    elif primary_val:
-                        st.write(f"📄 **Primary Datasheet:** `{primary_val}`")
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Manufacturer & MS/NASM Panel
+                # Alternate Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} / MS (Equivalents)")
@@ -126,7 +140,6 @@ if query and not df.empty:
                     st.markdown("---")
                     st.markdown("**All Alternate & MS/NASM Part Numbers:**")
                     
-                    # Scan across all repeated Alt Part No columns
                     pairs_found = False
                     for i in range(len(df.columns)):
                         col_header = df.columns[i].lower()
@@ -148,8 +161,6 @@ if query and not df.empty:
                     
                     if alt_url:
                         st.link_button("📄 Open Alternate Datasheet", alt_url, use_container_width=True)
-                    elif alt_val:
-                        st.write(f"📄 **Alt Datasheet:** `{alt_val}`")
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
