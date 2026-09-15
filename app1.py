@@ -9,7 +9,7 @@ st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=2)
 def load_data():
     try:
         df = pd.read_csv(CSV_URL)
@@ -40,16 +40,21 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # --- POSITIONAL LINK EXTRACTOR ---
-            # Collect all valid HTTP URLs in order from left to right across the row
-            found_urls = []
-            for col_idx in range(len(df.columns)):
-                val = str(row.iloc[col_idx]).strip()
-                if val.lower().startswith("http"):
-                    found_urls.append(val)
-
-            primary_url = found_urls[0] if len(found_urls) > 0 else ""
-            alt_url = found_urls[1] if len(found_urls) > 1 else ""
+            # --- Extract Datasheet Values by Inspecting Headers ---
+            primary_val = ""
+            alt_val = ""
+            
+            for col in df.columns:
+                c_lower = col.lower()
+                val = str(row[col]).strip()
+                if val and val != "-":
+                    if any(k in c_lower for k in ["sheet", "link", "url"]):
+                        if any(k in c_lower for k in ["alt", "cherry", "1"]):
+                            if not alt_val:
+                                alt_val = val
+                        else:
+                            if not primary_val:
+                                primary_val = val
 
             with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
@@ -62,8 +67,10 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
                     
-                    if primary_url:
-                        st.link_button("📄 Open Primary Datasheet", primary_url)
+                    if primary_val.startswith("http"):
+                        st.link_button("📄 Open Primary Datasheet", primary_val)
+                    elif primary_val:
+                        st.info(f"📄 **Primary Datasheet:** `{primary_val}`")
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
@@ -86,7 +93,7 @@ if query and not df.empty:
                             if i + 1 < len(df.columns) and "standard" in df.columns[i + 1].lower():
                                 std_val = str(row.iloc[i + 1]).strip()
                             
-                            if pn_val and pn_val != "-" and not pn_val.startswith("http"):
+                            if pn_val and pn_val != "-":
                                 st.write(f"• **Alt Part No:** `{pn_val}` | **Standard:** `{std_val if std_val else '-'}`")
                                 pairs_found = True
 
@@ -95,8 +102,10 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    if alt_url:
-                        st.link_button("📄 Open Alternate Datasheet", alt_url)
+                    if alt_val.startswith("http"):
+                        st.link_button("📄 Open Alternate Datasheet", alt_val)
+                    elif alt_val:
+                        st.info(f"📄 **Alt Datasheet:** `{alt_val}`")
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
