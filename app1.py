@@ -31,13 +31,7 @@ def load_data():
 
 df = load_data()
 
-# Helper to extract clean base series prefix (e.g. 'AF5141' from 'AF5141-3-01PR')
-def get_series_prefix(pn):
-    pn = str(pn).strip()
-    match = re.match(r'^([A-Za-z0-9]+)', pn)
-    return match.group(1) if match else pn
-
-# Helper to pull the first valid URL from a column or cell
+# Helper to extract clean URL from text
 def extract_url(val):
     val = str(val).strip()
     if val and val != "-" and not val.startswith("#"):
@@ -46,7 +40,13 @@ def extract_url(val):
             return urls[0]
     return None
 
-# Build a lookup map of series prefix -> valid fallback URL for Primary & Alt datasheets
+# Helper to normalize series prefixes (e.g. 'AF5141-3-01' -> 'AF5141')
+def get_base_prefix(pn):
+    pn = str(pn).strip().upper()
+    # Match first alphanumeric block before dash (e.g. AF5141)
+    match = re.match(r'^([A-Z0-9]{4,6})', pn)
+    return match.group(1) if match else pn[:6]
+
 PRIMARY_SERIES_MAP = {}
 ALT_SERIES_MAP = {}
 
@@ -54,7 +54,6 @@ if not df.empty:
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
     target_col = pn_cols[0] if pn_cols else df.columns[1]
 
-    # Dynamically locate datasheet columns
     primary_ds_col = None
     alt_ds_col = None
 
@@ -67,9 +66,9 @@ if not df.empty:
                 if not primary_ds_col:
                     primary_ds_col = c
 
-    # Populate fallback maps across all rows
+    # Build fallback dictionary scanning all valid rows
     for _, r in df.iterrows():
-        prefix = get_series_prefix(r[target_col])
+        prefix = get_base_prefix(r[target_col])
         
         if primary_ds_col:
             p_url = extract_url(r[primary_ds_col])
@@ -85,7 +84,7 @@ st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 30, 100, 75)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
-query = st.text_input("Enter Part Number:", placeholder="e.g., AF5141-3-01PR").strip()
+query = st.text_input("Enter Part Number:", placeholder="e.g., AF5141-3-01").strip()
 
 if query and not df.empty:
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
@@ -100,15 +99,17 @@ if query and not df.empty:
         st.subheader(f"Results for '{query}':")
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
-            prefix = get_series_prefix(matched_pn)
+            prefix = get_base_prefix(matched_pn)
             
-            # Primary URL resolution with fallback
+            # 1. Try direct cell extraction
             primary_val = row[primary_ds_col] if primary_ds_col else ""
             primary_url = extract_url(primary_val)
+            
+            # 2. Fall back to series prefix map if direct cell fails
             if not primary_url:
                 primary_url = PRIMARY_SERIES_MAP.get(prefix)
 
-            # Alternate URL resolution with fallback
+            # 3. Direct cell vs Fallback for Alternate link
             alt_val = row[alt_ds_col] if alt_ds_col else ""
             alt_url = extract_url(alt_val)
             if not alt_url:
