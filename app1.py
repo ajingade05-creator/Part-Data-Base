@@ -1,22 +1,56 @@
 import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
+from bs4 import BeautifulSoup
+import requests
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
+
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #0F172A;
+        color: #F8FAFC;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.caption("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
-CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
+# Published HTML URL (preserves true hyperlinks)
+PUBHTML_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pubhtml?gid=0&single=true"
 
-@st.cache_data(ttl=2)
+@st.cache_data(ttl=5)
 def load_data():
     try:
-        df = pd.read_csv(CSV_URL)
+        response = requests.get(PUBHTML_URL)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        table = soup.find('table')
+        
+        rows = []
+        for tr in table.find_all('tr'):
+            row_data = []
+            for td in tr.find_all(['td', 'th']):
+                # Extract hidden URL if present inside an <a> tag
+                a_tag = td.find('a')
+                if a_tag and a_tag.get('href'):
+                    href = a_tag.get('href')
+                    # Clean Google redirection wrapper if present
+                    if 'google.com/url?q=' in href:
+                        href = href.split('google.com/url?q=')[1].split('&')[0]
+                    row_data.append(href)
+                else:
+                    row_data.append(td.get_text().strip())
+            if row_data:
+                rows.append(row_data)
+                
+        # First valid row as headers
+        df = pd.DataFrame(rows[1:], columns=rows[0])
         df.columns = df.columns.str.strip()
         return df.fillna("")
     except Exception as e:
-        st.error(f"Error loading database sheet: {e}")
+        st.error(f"Error loading HTML sheet: {e}")
         return pd.DataFrame()
 
 df = load_data()
@@ -40,26 +74,20 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link", "url"])]
-            
-            primary_val = ""
-            alt_val = ""
-            
-            for c in ds_cols:
-                c_lower = c.lower()
-                val = str(row[c]).strip()
-                if val and val != "-" and not val.startswith("#"):
-                    if any(k in c_lower for k in ["alt", "cherry", "1"]):
-                        if not alt_val:
-                            alt_val = val
-                    else:
-                        if not primary_val:
-                            primary_val = val
+            # Locate all extracted URLs in the row
+            found_urls = []
+            for col_idx in range(len(df.columns)):
+                cell_val = str(row.iloc[col_idx]).strip()
+                if cell_val.startswith("http") and not cell_val.startswith("#"):
+                    found_urls.append(cell_val)
+
+            primary_url = found_urls[0] if len(found_urls) > 0 else ""
+            alt_url = found_urls[1] if len(found_urls) > 1 else ""
 
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Manufacturer Panel
+                # Primary Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -67,14 +95,12 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** `{row.get('Standard', 'N/A')}`")
                     
-                    if primary_val.startswith("http"):
-                        st.link_button("📄 Open Primary Datasheet", primary_val, use_container_width=True)
-                    elif primary_val:
-                        st.write(f"📄 **Primary Datasheet:** `{primary_val}`")
+                    if primary_url:
+                        st.link_button("📄 Open Primary Datasheet", primary_url, use_container_width=True)
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Manufacturer Panel
+                # Alternate Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} (Equivalents)")
@@ -102,10 +128,8 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    if alt_val.startswith("http"):
-                        st.link_button("📄 Open Alternate Datasheet", alt_val, use_container_width=True)
-                    elif alt_val:
-                        st.write(f"📄 **Alt Datasheet:** `{alt_val}`")
+                    if alt_url:
+                        st.link_button("📄 Open Alternate Datasheet", alt_url, use_container_width=True)
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
