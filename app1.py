@@ -1,15 +1,11 @@
 import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
-from urllib.parse import quote
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
 st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
-
-# Paste your actual folder URL prefix here:
-SHAREPOINT_BASE_URL = "https://avdelaero-my.sharepoint.com/:b:/g/personal/YOUR_PATH_HERE/"
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
@@ -31,15 +27,6 @@ max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
 query = st.text_input("Enter Part Number (typo-tolerant search):", "").strip()
 
-def make_clickable_url(val):
-    val = str(val).strip()
-    if not val or val == "-":
-        return None
-    if val.startswith("http"):
-        return val
-    # Append raw filename to base URL and encode spaces (%20)
-    return SHAREPOINT_BASE_URL + quote(val)
-
 if query and not df.empty:
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
     target_col = pn_cols[0] if pn_cols else df.columns[1]
@@ -53,20 +40,20 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link"])]
+            # Locate all link columns directly
+            primary_url = ""
+            alt_url = ""
             
-            primary_val = ""
-            alt_val = ""
-            
-            for c in ds_cols:
-                val = str(row[c]).strip()
-                if val and val != "-":
-                    if any(k in c.lower() for k in ["alt", "cherry", "1"]):
-                        if not alt_val:
-                            alt_val = val
+            for col in df.columns:
+                col_lower = col.lower()
+                val = str(row[col]).strip()
+                if val.startswith("http"):
+                    if any(k in col_lower for k in ["alt", "cherry", "1"]):
+                        if not alt_url:
+                            alt_url = val
                     else:
-                        if not primary_val:
-                            primary_val = val
+                        if not primary_url:
+                            primary_url = val
 
             with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
@@ -79,7 +66,6 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
                     
-                    primary_url = make_clickable_url(primary_val)
                     if primary_url:
                         st.link_button("📄 Open Primary Datasheet", primary_url)
                     else:
@@ -113,7 +99,6 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    alt_url = make_clickable_url(alt_val)
                     if alt_url:
                         st.link_button("📄 Open Alternate Datasheet", alt_url)
                     else:
