@@ -43,7 +43,6 @@ def extract_url(val):
 # Helper to normalize series prefixes (e.g. 'AF5141-3-01' -> 'AF5141')
 def get_base_prefix(pn):
     pn = str(pn).strip().upper()
-    # Match first alphanumeric block before dash (e.g. AF5141)
     match = re.match(r'^([A-Z0-9]{4,6})', pn)
     return match.group(1) if match else pn[:6]
 
@@ -54,31 +53,29 @@ if not df.empty:
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
     target_col = pn_cols[0] if pn_cols else df.columns[1]
 
-    primary_ds_col = None
-    alt_ds_col = None
+    # Find ALL datasheet columns to ensure we catch formula columns at the end (e.g. Column O & P)
+    primary_ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link", "url"]) and not any(k in c.lower() for k in ["cherry", "alt"])]
+    alt_ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link", "url"]) and any(k in c.lower() for k in ["cherry", "alt"])]
 
-    for c in df.columns:
-        c_lower = c.lower()
-        if any(k in c_lower for k in ["sheet", "link", "url"]):
-            if any(k in c_lower for k in ["cherry", "alt"]):
-                alt_ds_col = c
-            else:
-                if not primary_ds_col:
-                    primary_ds_col = c
-
-    # Build fallback dictionary scanning all valid rows
+    # Build fallback dictionary scanning all valid rows across all matching columns
     for _, r in df.iterrows():
         prefix = get_base_prefix(r[target_col])
         
-        if primary_ds_col:
-            p_url = extract_url(r[primary_ds_col])
-            if p_url and prefix not in PRIMARY_SERIES_MAP:
-                PRIMARY_SERIES_MAP[prefix] = p_url
+        # Build Primary Map
+        if prefix not in PRIMARY_SERIES_MAP:
+            for col in primary_ds_cols:
+                u = extract_url(r[col])
+                if u:
+                    PRIMARY_SERIES_MAP[prefix] = u
+                    break
 
-        if alt_ds_col:
-            a_url = extract_url(r[alt_ds_col])
-            if a_url and prefix not in ALT_SERIES_MAP:
-                ALT_SERIES_MAP[prefix] = a_url
+        # Build Alternate Map
+        if prefix not in ALT_SERIES_MAP:
+            for col in alt_ds_cols:
+                u = extract_url(r[col])
+                if u:
+                    ALT_SERIES_MAP[prefix] = u
+                    break
 
 st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 30, 100, 75)
@@ -101,17 +98,33 @@ if query and not df.empty:
             row = df.iloc[index]
             prefix = get_base_prefix(matched_pn)
             
-            # 1. Try direct cell extraction
-            primary_val = row[primary_ds_col] if primary_ds_col else ""
-            primary_url = extract_url(primary_val)
+            # --- Primary Link Resolution ---
+            primary_text = ""
+            primary_url = None
+            for col in primary_ds_cols:
+                val = str(row[col]).strip()
+                u = extract_url(val)
+                if u and not primary_url:
+                    primary_url = u
+                elif val and val != "-" and not val.startswith("http") and not val.startswith("#") and not primary_text:
+                    primary_text = val
             
-            # 2. Fall back to series prefix map if direct cell fails
+            # Borrow from another row in the same series if current row is broken
             if not primary_url:
                 primary_url = PRIMARY_SERIES_MAP.get(prefix)
 
-            # 3. Direct cell vs Fallback for Alternate link
-            alt_val = row[alt_ds_col] if alt_ds_col else ""
-            alt_url = extract_url(alt_val)
+            # --- Alternate Link Resolution ---
+            alt_text = ""
+            alt_url = None
+            for col in alt_ds_cols:
+                val = str(row[col]).strip()
+                u = extract_url(val)
+                if u and not alt_url:
+                    alt_url = u
+                elif val and val != "-" and not val.startswith("http") and not val.startswith("#") and not alt_text:
+                    alt_text = val
+            
+            # Borrow from another row in the same series if current row is broken
             if not alt_url:
                 alt_url = ALT_SERIES_MAP.get(prefix)
 
@@ -129,6 +142,8 @@ if query and not df.empty:
                     st.markdown("---")
                     if primary_url:
                         st.link_button("📄 Open Primary Datasheet", primary_url, use_container_width=True)
+                    elif primary_text:
+                        st.write(f"📄 **Primary Datasheet:** `{primary_text}` *(Link unavailable in Database)*")
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
@@ -162,6 +177,8 @@ if query and not df.empty:
                     
                     if alt_url:
                         st.link_button("📄 Open Alternate Datasheet", alt_url, use_container_width=True)
+                    elif alt_text:
+                        st.write(f"📄 **Alt Datasheet:** `{alt_text}` *(Link unavailable in Database)*")
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
