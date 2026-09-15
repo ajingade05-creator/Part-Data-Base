@@ -33,7 +33,7 @@ def load_data():
 df = load_data()
 
 st.sidebar.header("Search Settings")
-similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 30, 100, 50)
+similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 30, 100, 75)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
 query = st.text_input("Enter Part Number:", placeholder="e.g., AF5141-3-01PR").strip()
@@ -54,7 +54,6 @@ if query and not df.empty:
             primary_val = ""
             alt_val = ""
             
-            # Extract Datasheet / Link column values by header matching
             for col in df.columns:
                 c_lower = col.lower()
                 val = str(row[col]).strip()
@@ -72,7 +71,6 @@ if query and not df.empty:
                 urls = re.findall(r'https?://[^\s,"]+', val)
                 if urls:
                     return urls[0]
-                # If raw filename (e.g., CCR264.pdf), construct SharePoint search URL
                 if val.endswith(".pdf") or len(val) > 2:
                     return f"https://avdelaero-my.sharepoint.com/_layouts/15/search.aspx?q={quote(val)}"
                 return None
@@ -106,19 +104,16 @@ if query and not df.empty:
                     st.markdown("---")
                     st.markdown("**All Alternate & MS/NASM Part Numbers:**")
                     
-                    # SCAN ALL COLUMNS FOR ANY ALT PART NO ENTRIES
                     pairs_found = False
                     for i in range(len(df.columns)):
                         col_header = df.columns[i].lower()
                         if "alt." in col_header or "alt part" in col_header:
                             pn_val = str(row.iloc[i]).strip()
                             
-                            # Check next column for matching Standard if present
                             std_val = "-"
                             if i + 1 < len(df.columns) and "standard" in df.columns[i + 1].lower():
                                 std_val = str(row.iloc[i + 1]).strip()
                             
-                            # Exclude links or empty hyphens
                             if pn_val and pn_val != "-" and not pn_val.startswith("http") and not pn_val.endswith(".pdf"):
                                 st.write(f"• **Part No:** `{pn_val}` | **Standard:** `{std_val if std_val else '-'}`")
                                 pairs_found = True
@@ -129,7 +124,7 @@ if query and not df.empty:
                     st.markdown("---")
                     
                     if alt_url:
-                        st.link_button(f"📄 Open Alternate Datasheet ({alt_val})", alt_url, use_container_width=True)
+                        st.link_button("📄 Open Alternate Datasheet", alt_url, use_container_width=True)
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
