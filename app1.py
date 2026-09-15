@@ -40,18 +40,13 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # --- TARGET EXPLICIT LINK COLUMNS ---
-            primary_url = ""
-            alt_url = ""
-            
-            for col in df.columns:
-                col_lower = col.lower()
-                val = str(row[col]).strip()
-                if "link" in col_lower and val.startswith("http"):
-                    if "cherry" in col_lower or "alt" in col_lower or "1" in col_lower:
-                        alt_url = val
-                    else:
-                        primary_url = val
+            # --- ULTIMATE ANY-URL EXTRACTOR ---
+            # Search every cell in the row for URLs starting with http
+            found_urls = []
+            for col_idx in range(len(df.columns)):
+                cell_val = str(row.iloc[col_idx]).strip()
+                if cell_val.lower().startswith("http"):
+                    found_urls.append(cell_val)
 
             with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
@@ -64,8 +59,8 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
                     
-                    if primary_url:
-                        st.link_button("📄 Open Primary Datasheet", primary_url)
+                    if len(found_urls) > 0:
+                        st.link_button("📄 Open Primary Datasheet", found_urls[0])
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
@@ -97,8 +92,8 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    if alt_url:
-                        st.link_button("📄 Open Alternate Datasheet", alt_url)
+                    if len(found_urls) > 1:
+                        st.link_button("📄 Open Alternate Datasheet", found_urls[1])
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
