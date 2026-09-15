@@ -24,16 +24,14 @@ PUBHTML_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6n
 @st.cache_data(ttl=2)
 def load_data():
     try:
-        # Load structured data via CSV
         df = pd.read_csv(CSV_URL)
         df.columns = df.columns.str.strip()
         df = df.fillna("")
 
-        # Extract underlying hyperlinks from HTML stream
+        # Extract all embedded href links directly from the published HTML DOM
         req = urllib.request.Request(PUBHTML_URL, headers={'User-Agent': 'Mozilla/5.0'})
         html_str = urllib.request.urlopen(req).read().decode('utf-8')
         
-        # Match all href targets embedded in published sheet
         raw_hrefs = re.findall(r'href=["\'](.*?)["\']', html_str)
         cleaned_urls = []
         for h in raw_hrefs:
@@ -61,6 +59,7 @@ if query and not df.empty:
     
     part_numbers = df[target_col].astype(str).tolist()
     
+    # Strictly enforce slider threshold filtering
     raw_matches = process.extract(query, part_numbers, scorer=fuzz.WRatio, limit=50)
     filtered = [m for m in raw_matches if float(m[1]) >= float(similarity_threshold)][:int(max_results)]
     
@@ -83,15 +82,16 @@ if query and not df.empty:
                             if not primary_val:
                                 primary_val = val
 
+            # Resolve cell values against scraped HTML URLs or raw strings
             def resolve_url(val):
                 if not val or val == "-":
                     return None
                 urls = re.findall(r'https?://[^\s,"]+', val)
                 if urls:
                     return urls[0]
-                # Match filename string to scraped HTML URLs
                 for u in extracted_urls:
-                    if val.replace(" ", "").lower() in u.lower():
+                    clean_name = val.replace(" ", "").lower().replace(".pdf", "")
+                    if clean_name in u.lower():
                         return u
                 return None
 
@@ -101,7 +101,7 @@ if query and not df.empty:
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Panel
+                # Primary Manufacturer Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -113,11 +113,11 @@ if query and not df.empty:
                     if primary_url:
                         st.link_button("📄 Open Primary Datasheet", primary_url, use_container_width=True)
                     elif primary_val:
-                        st.write(f"📄 **Primary Datasheet:** `{primary_val}` *(Paste full https:// link in sheet to enable button)*")
+                        st.write(f"📄 **Primary Datasheet:** `{primary_val}`")
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Panel
+                # Alternate Manufacturer & MS/NASM Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} / MS (Equivalents)")
@@ -126,6 +126,7 @@ if query and not df.empty:
                     st.markdown("---")
                     st.markdown("**All Alternate & MS/NASM Part Numbers:**")
                     
+                    # Scan across all repeated Alt Part No columns
                     pairs_found = False
                     for i in range(len(df.columns)):
                         col_header = df.columns[i].lower()
@@ -148,7 +149,7 @@ if query and not df.empty:
                     if alt_url:
                         st.link_button("📄 Open Alternate Datasheet", alt_url, use_container_width=True)
                     elif alt_val:
-                        st.write(f"📄 **Alt Datasheet:** `{alt_val}` *(Paste full https:// link in sheet to enable button)*")
+                        st.write(f"📄 **Alt Datasheet:** `{alt_val}`")
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
