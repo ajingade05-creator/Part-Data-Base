@@ -2,7 +2,6 @@ import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
 import re
-from urllib.parse import quote
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
@@ -44,7 +43,6 @@ if query and not df.empty:
     
     part_numbers = df[target_col].astype(str).tolist()
     
-    # Extract matches and strictly filter out any match below the slider threshold
     raw_matches = process.extract(query, part_numbers, scorer=fuzz.WRatio, limit=50)
     filtered = [m for m in raw_matches if float(m[1]) >= float(similarity_threshold)][:int(max_results)]
     
@@ -67,18 +65,17 @@ if query and not df.empty:
                             if not primary_val:
                                 primary_val = val
 
-            def resolve_link(val):
+            # ONLY RESOLVE REAL HTTP/HTTPS LINKS
+            def extract_valid_url(val):
                 if not val or val == "-":
                     return None
                 urls = re.findall(r'https?://[^\s,"]+', val)
                 if urls:
                     return urls[0]
-                if val.endswith(".pdf") or len(val) > 2:
-                    return f"https://avdelaero-my.sharepoint.com/_layouts/15/search.aspx?q={quote(val)}"
                 return None
 
-            primary_url = resolve_link(primary_val)
-            alt_url = resolve_link(alt_val)
+            primary_url = extract_valid_url(primary_val)
+            alt_url = extract_valid_url(alt_val)
 
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
@@ -94,6 +91,8 @@ if query and not df.empty:
                     st.markdown("---")
                     if primary_url:
                         st.link_button("📄 Open Primary Datasheet", primary_url, use_container_width=True)
+                    elif primary_val:
+                        st.write(f"📄 **Primary Datasheet:** `{primary_val}` *(Paste full https:// link in sheet to enable button)*")
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
@@ -127,6 +126,8 @@ if query and not df.empty:
                     
                     if alt_url:
                         st.link_button("📄 Open Alternate Datasheet", alt_url, use_container_width=True)
+                    elif alt_val:
+                        st.write(f"📄 **Alt Datasheet:** `{alt_val}` *(Paste full https:// link in sheet to enable button)*")
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
