@@ -21,7 +21,7 @@ def load_data():
 
 df = load_data()
 
-# Sidebar
+# Sidebar Settings
 st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 50, 100, 50)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
@@ -40,10 +40,19 @@ if query and not df.empty:
         st.subheader(f"Results for '{query}':")
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
+            
+            # --- UNIVERSAL LINK DETECTOR ---
+            # Collect all HTTP/HTTPS URLs present anywhere in this row
+            all_urls = []
+            for col in df.columns:
+                val = str(row[col]).strip()
+                if val.startswith("http"):
+                    all_urls.append((col, val))
+            
             with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Manufacturer
+                # Primary Manufacturer (Allfast)
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -51,13 +60,11 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
                     
-                    allfast_cols = [c for c in df.columns if "allfast" in c.lower() and "link" in c.lower()]
-                    url1 = str(row[allfast_cols[0]]).strip() if allfast_cols else ""
-                    
-                    if url1.startswith("http"):
-                        st.link_button("📄 Open Primary Datasheet", url1)
+                    # Grab first available URL in row for Primary
+                    if len(all_urls) > 0:
+                        st.link_button(f"📄 Open Primary Datasheet", all_urls[0][1])
                     else:
-                        st.write("📄 **Primary Datasheet:** Link Not Available")
+                        st.write("📄 **Primary Datasheet:** Link Not Available in Sheet")
 
                 # Alternate Manufacturer & Equivalents
                 with col2:
@@ -87,13 +94,11 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    cherry_cols = [c for c in df.columns if "cherry" in c.lower() and "link" in c.lower()]
-                    url2 = str(row[cherry_cols[0]]).strip() if cherry_cols else ""
-                    
-                    if url2.startswith("http"):
-                        st.link_button("📄 Open Alternate Datasheet", url2)
+                    # Grab second available URL in row for Alternate (if present)
+                    if len(all_urls) > 1:
+                        st.link_button(f"📄 Open Alternate Datasheet", all_urls[1][1])
                     else:
-                        st.write("📄 **Alt Datasheet:** Link Not Available")
+                        st.write("📄 **Alt Datasheet:** Link Not Available in Sheet")
     else:
         st.warning("No matching parts found. Try lowering the match sensitivity slider.")
 
