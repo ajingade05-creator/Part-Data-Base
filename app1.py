@@ -54,7 +54,7 @@ if query and not df.empty:
             primary_val = ""
             alt_val = ""
             
-            # Target exact columns explicitly by header intent
+            # Extract Datasheet / Link column values by header matching
             for col in df.columns:
                 c_lower = col.lower()
                 val = str(row[col]).strip()
@@ -63,16 +63,16 @@ if query and not df.empty:
                         if any(k in c_lower for k in ["cherry", "alt"]):
                             alt_val = val
                         else:
-                            primary_val = val
+                            if not primary_val:
+                                primary_val = val
 
-            # Function to parse value into standard button target
             def resolve_link(val):
                 if not val or val == "-":
                     return None
                 urls = re.findall(r'https?://[^\s,"]+', val)
                 if urls:
                     return urls[0]
-                # If cell contains raw filename (e.g. CCR264.pdf), build sharepoint search query link
+                # If raw filename (e.g., CCR264.pdf), construct SharePoint search URL
                 if val.endswith(".pdf") or len(val) > 2:
                     return f"https://avdelaero-my.sharepoint.com/_layouts/15/search.aspx?q={quote(val)}"
                 return None
@@ -83,7 +83,7 @@ if query and not df.empty:
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Panel
+                # Primary Manufacturer Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -91,32 +91,36 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** `{row.get('Standard', 'N/A')}`")
                     
+                    st.markdown("---")
                     if primary_url:
                         st.link_button("📄 Open Primary Datasheet", primary_url, use_container_width=True)
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Panel
+                # Alternate Manufacturer & MS/NASM Equivalents Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
-                    st.markdown(f"### {mfg2} (Equivalents)")
+                    st.markdown(f"### {mfg2} / MS (Equivalents)")
                     st.write(f"**Alt. Description:** {row.get('Description.1', 'N/A')}")
                     
                     st.markdown("---")
-                    st.markdown("**Equivalent Part Numbers:**")
+                    st.markdown("**All Alternate & MS/NASM Part Numbers:**")
                     
+                    # SCAN ALL COLUMNS FOR ANY ALT PART NO ENTRIES
                     pairs_found = False
                     for i in range(len(df.columns)):
                         col_header = df.columns[i].lower()
                         if "alt." in col_header or "alt part" in col_header:
                             pn_val = str(row.iloc[i]).strip()
                             
+                            # Check next column for matching Standard if present
                             std_val = "-"
                             if i + 1 < len(df.columns) and "standard" in df.columns[i + 1].lower():
                                 std_val = str(row.iloc[i + 1]).strip()
                             
-                            if pn_val and pn_val != "-" and not pn_val.startswith("http"):
-                                st.write(f"• **Part:** `{pn_val}` | **Standard:** `{std_val if std_val else '-'}`")
+                            # Exclude links or empty hyphens
+                            if pn_val and pn_val != "-" and not pn_val.startswith("http") and not pn_val.endswith(".pdf"):
+                                st.write(f"• **Part No:** `{pn_val}` | **Standard:** `{std_val if std_val else '-'}`")
                                 pairs_found = True
 
                     if not pairs_found:
