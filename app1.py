@@ -2,8 +2,75 @@ import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
 
-st.set_page_config(page_title="Part Number Lookup", layout="wide")
-st.title("🔩 Part Number Search & Equivalent Finder")
+st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
+
+# Avdel India Official Branding Colors (Steel Blue, Deep Navy, Light Gray, Clean White)
+st.markdown("""
+    <style>
+    :root {
+        --avdel-blue: #3182CE;
+        --avdel-blue-hover: #2B6CB0;
+        --avdel-navy: #0F2942;
+        --avdel-bg: #F8FAFC;
+        --avdel-card: #FFFFFF;
+        --avdel-text: #1E293B;
+    }
+    
+    /* Main Background */
+    .stApp {
+        background-color: var(--avdel-bg);
+        color: var(--avdel-text);
+    }
+    
+    /* Title styling */
+    h1 {
+        color: var(--avdel-navy) !important;
+        font-weight: 700;
+        border-bottom: 3px solid var(--avdel-blue);
+        padding-bottom: 8px;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: var(--avdel-navy) !important;
+        color: #FFFFFF !important;
+    }
+    
+    [data-testid="stSidebar"] * {
+        color: #FFFFFF !important;
+    }
+    
+    /* Slider Track Accent */
+    div[data-baseweb="slider"] div {
+        background-color: var(--avdel-blue) !important;
+    }
+    
+    /* Result Expanders styled like web cards */
+    .streamlit-expanderHeader {
+        background-color: var(--avdel-card) !important;
+        border-left: 5px solid var(--avdel-blue) !important;
+        color: var(--avdel-navy) !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    /* Action Buttons in Steel Blue */
+    .stButton>button, .stLinkButton>a {
+        background-color: var(--avdel-blue) !important;
+        color: white !important;
+        border-radius: 4px !important;
+        border: none !important;
+        font-weight: 600 !important;
+    }
+    
+    .stButton>button:hover, .stLinkButton>a:hover {
+        background-color: var(--avdel-blue-hover) !important;
+        color: white !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("✈️ Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
+st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
@@ -19,8 +86,9 @@ def load_data():
 
 df = load_data()
 
+# Sidebar controls - Label updated to Match Sensitivity (%)
 st.sidebar.header("Search Settings")
-similarity_threshold = st.sidebar.slider("Fuzzy Match Sensitivity (%)", 50, 100, 50)
+similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 50, 100, 50)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
 query = st.text_input("Enter Part Number (typo-tolerant search):", "").strip()
@@ -40,7 +108,7 @@ if query and not df.empty:
             with st.expander(f"📌 **{matched_pn}** (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Manufacturer (Allfast)
+                # Primary Manufacturer Details (Allfast)
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -56,7 +124,7 @@ if query and not df.empty:
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Manufacturer & Exact Position-Based Pairing
+                # Alternate Manufacturer & Position-Based Pairing
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} (Equivalents)")
@@ -66,14 +134,11 @@ if query and not df.empty:
                     st.markdown("#### 🔗 All Alternate Part Numbers & Standards")
                     
                     pairs_found = False
-                    
-                    # Scan every column and pair any "Alt. Part" column with the column right next to it
                     for i in range(len(df.columns)):
                         col_header = df.columns[i].lower()
                         if "alt." in col_header or "alt part" in col_header:
                             pn_val = str(row.iloc[i]).strip()
                             
-                            # Get standard value from the immediate next column (i + 1)
                             std_val = "-"
                             if i + 1 < len(df.columns) and "standard" in df.columns[i + 1].lower():
                                 std_val = str(row.iloc[i + 1]).strip()
