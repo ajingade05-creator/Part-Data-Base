@@ -4,10 +4,18 @@ from rapidfuzz import process, fuzz
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
-st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
-st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #0F172A;
+        color: #F8FAFC;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# Direct published CSV endpoint
+st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
+st.caption("Search aerospace part numbers with typo-tolerance to retrieve specs, equivalents, and datasheets.")
+
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
 @st.cache_data(ttl=2)
@@ -23,10 +31,10 @@ def load_data():
 df = load_data()
 
 st.sidebar.header("Search Settings")
-similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 50, 100, 50)
+similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 30, 100, 50)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
-query = st.text_input("Enter Part Number (typo-tolerant search):", "").strip()
+query = st.text_input("Enter Part Number:", placeholder="e.g., AF5141-3-01PR").strip()
 
 if query and not df.empty:
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
@@ -41,41 +49,49 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # --- POSITIONAL LINK RESOLVER ---
-            found_urls = []
-            for col_idx in range(len(df.columns)):
-                cell_val = str(row.iloc[col_idx]).strip()
-                # Ignores '#NAME?' errors and checks for valid web URLs
-                if cell_val.lower().startswith("http") and not cell_val.startswith("#"):
-                    found_urls.append(cell_val)
+            # Extract links or PDF filename strings
+            ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link", "url"])]
+            
+            primary_val = ""
+            alt_val = ""
+            
+            for c in ds_cols:
+                c_lower = c.lower()
+                val = str(row[c]).strip()
+                if val and val != "-" and not val.startswith("#"):
+                    if any(k in c_lower for k in ["alt", "cherry", "1"]):
+                        if not alt_val:
+                            alt_val = val
+                    else:
+                        if not primary_val:
+                            primary_val = val
 
-            primary_url = found_urls[0] if len(found_urls) > 0 else ""
-            alt_url = found_urls[1] if len(found_urls) > 1 else ""
-
-            with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
+            with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Manufacturer
+                # Primary Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
                     st.write(f"**Part Number:** `{matched_pn}`")
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
-                    st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
+                    st.write(f"**Standard:** `{row.get('Standard', 'N/A')}`")
                     
-                    if primary_url:
-                        st.link_button("📄 Open Primary Datasheet", primary_url)
+                    if primary_val.startswith("http"):
+                        st.link_button("📄 Open Primary Datasheet", primary_val, use_container_width=True)
+                    elif primary_val:
+                        st.write(f"📄 **Primary Datasheet:** `{primary_val}` *(URL link hidden in sheet)*")
                     else:
-                        st.write("📄 **Primary Datasheet:** Link Not Available in Sheet")
+                        st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Manufacturer & Equivalents
+                # Alternate Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} (Equivalents)")
                     st.write(f"**Alt. Description:** {row.get('Description.1', 'N/A')}")
                     
                     st.markdown("---")
-                    st.markdown("**All Alternate Part Numbers & Standards:**")
+                    st.markdown("**Equivalent Part Numbers:**")
                     
                     pairs_found = False
                     for i in range(len(df.columns)):
@@ -88,7 +104,7 @@ if query and not df.empty:
                                 std_val = str(row.iloc[i + 1]).strip()
                             
                             if pn_val and pn_val != "-" and not pn_val.startswith("http"):
-                                st.write(f"• **Alt Part No:** `{pn_val}` | **Standard:** `{std_val if std_val else '-'}`")
+                                st.write(f"• **Part:** `{pn_val}` | **Standard:** `{std_val if std_val else '-'}`")
                                 pairs_found = True
 
                     if not pairs_found:
@@ -96,14 +112,15 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    if alt_url:
-                        st.link_button("📄 Open Alternate Datasheet", alt_url)
+                    if alt_val.startswith("http"):
+                        st.link_button("📄 Open Alternate Datasheet", alt_url, use_container_width=True)
+                    elif alt_val:
+                        st.write(f"📄 **Alt Datasheet:** `{alt_val}` *(URL link hidden in sheet)*")
                     else:
-                        st.write("📄 **Alt Datasheet:** Link Not Available in Sheet")
+                        st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
         st.warning("No matching parts found. Try lowering the match sensitivity slider.")
 
 st.markdown("---")
 with st.expander("🔍 View Complete Database Table"):
     st.dataframe(df, use_container_width=True)
-
