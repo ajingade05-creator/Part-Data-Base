@@ -173,25 +173,23 @@ if query and not df.empty:
                     st.markdown("---")
                     st.markdown("**All Alternate & MS/NASM Part Numbers:**")
                     
-                    # ROBUST SCAN FOR ALL ALTERNATE & MS/NASM PAIRS ACROSS COLUMNS
+                    # EXPLICIT SCAN FOR ALL ALTERNATE & MS/NASM PAIRS
                     pairs_found = False
-                    col_list = list(df.columns)
-                    i = 0
-                    while i < len(col_list):
-                        col_header = col_list[i].lower()
-                        if "alt." in col_header or "alt part" in col_header or "part no" in col_header:
-                            pn_val = str(row.iloc[i]).strip()
+                    cols = list(df.columns)
+                    
+                    for idx, col_name in enumerate(cols):
+                        c_lower = col_name.lower()
+                        if "alt." in c_lower or "alt part" in c_lower:
+                            pn_val = str(row.iloc[idx]).strip()
                             
-                            # Look ahead for standard column
+                            # Check next column for standard
                             std_val = "-"
-                            if i + 1 < len(col_list) and "standard" in col_list[i + 1].lower():
-                                std_val = str(row.iloc[i + 1]).strip()
-                                i += 1 # skip standard column on next loop
+                            if idx + 1 < len(cols) and "standard" in cols[idx + 1].lower():
+                                std_val = str(row.iloc[idx + 1]).strip()
                             
                             if pn_val and pn_val != "-" and pn_val != primary_pn and not pn_val.startswith("http") and not pn_val.endswith(".pdf"):
                                 st.write(f"• **Part No:** `{pn_val}` | **Standard:** `{std_val if std_val else '-'}`")
                                 pairs_found = True
-                        i += 1
 
                     if not pairs_found:
                         st.write("• *No alternate parts listed*")
