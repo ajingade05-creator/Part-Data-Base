@@ -40,13 +40,21 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # --- ULTIMATE ANY-URL EXTRACTOR ---
-            # Search every cell in the row for URLs starting with http
-            found_urls = []
-            for col_idx in range(len(df.columns)):
-                cell_val = str(row.iloc[col_idx]).strip()
-                if cell_val.lower().startswith("http"):
-                    found_urls.append(cell_val)
+            # Retrieve exact values from datasheet/link columns
+            ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link"])]
+            
+            primary_val = ""
+            alt_val = ""
+            
+            for c in ds_cols:
+                val = str(row[c]).strip()
+                if val and val != "-":
+                    if any(k in c.lower() for k in ["alt", "cherry", "1"]):
+                        if not alt_val:
+                            alt_val = val
+                    else:
+                        if not primary_val:
+                            primary_val = val
 
             with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
@@ -59,10 +67,12 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
                     
-                    if len(found_urls) > 0:
-                        st.link_button("📄 Open Primary Datasheet", found_urls[0])
+                    if primary_val.startswith("http"):
+                        st.link_button("📄 Open Primary Datasheet", primary_val)
+                    elif primary_val:
+                        st.write(f"📄 **Primary Datasheet:** `{primary_val}`")
                     else:
-                        st.write("📄 **Primary Datasheet:** Link Not Available")
+                        st.write("📄 **Primary Datasheet:** Not Available")
 
                 # Alternate Manufacturer & Equivalents
                 with col2:
@@ -92,10 +102,12 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    if len(found_urls) > 1:
-                        st.link_button("📄 Open Alternate Datasheet", found_urls[1])
+                    if alt_val.startswith("http"):
+                        st.link_button("📄 Open Alternate Datasheet", alt_val)
+                    elif alt_val:
+                        st.write(f"📄 **Alt Datasheet:** `{alt_val}`")
                     else:
-                        st.write("📄 **Alt Datasheet:** Link Not Available")
+                        st.write("📄 **Alt Datasheet:** Not Available")
     else:
         st.warning("No matching parts found. Try lowering the match sensitivity slider.")
 
