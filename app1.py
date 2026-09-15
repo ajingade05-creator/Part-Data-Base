@@ -7,9 +7,6 @@ st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
-# Change this base URL to match your company's OneDrive/SharePoint folder URL where PDF files are hosted
-BASE_PDF_URL = "https://avdelaero-my.sharepoint.com/personal/"
-
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
 @st.cache_data(ttl=5)
@@ -43,6 +40,7 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
+            # Identify columns with links or datasheets
             ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link"])]
             
             primary_val = ""
@@ -72,11 +70,9 @@ if query and not df.empty:
                     if primary_val.startswith("http"):
                         st.link_button("📄 Open Primary Datasheet", primary_val)
                     elif primary_val:
-                        # Fallback link generator using base URL + filename
-                        fallback_url = BASE_PDF_URL + primary_val
-                        st.link_button(f"📄 Open Primary Datasheet ({primary_val})", fallback_url)
+                        st.write(f"📄 **Primary Datasheet:** `{primary_val}` *(Full link not evaluated in Sheet)*")
                     else:
-                        st.write("📄 **Primary Datasheet:** Not Available")
+                        st.write("📄 **Primary Datasheet:** Link Not Available")
 
                 # Alternate Manufacturer & Equivalents
                 with col2:
@@ -109,10 +105,9 @@ if query and not df.empty:
                     if alt_val.startswith("http"):
                         st.link_button("📄 Open Alternate Datasheet", alt_val)
                     elif alt_val:
-                        fallback_url = BASE_PDF_URL + alt_val
-                        st.link_button(f"📄 Open Alternate Datasheet ({alt_val})", fallback_url)
+                        st.write(f"📄 **Alt Datasheet:** `{alt_val}` *(Full link not evaluated in Sheet)*")
                     else:
-                        st.write("📄 **Alt Datasheet:** Not Available")
+                        st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
         st.warning("No matching parts found. Try lowering the match sensitivity slider.")
 
