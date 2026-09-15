@@ -20,7 +20,7 @@ def load_data():
 df = load_data()
 
 st.sidebar.header("Search Settings")
-similarity_threshold = st.sidebar.slider("Fuzzy Match Sensitivity (%)", 50, 100, 65)
+similarity_threshold = st.sidebar.slider("Fuzzy Match Sensitivity (%)", 50, 100, 50)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
 query = st.text_input("Enter Part Number (typo-tolerant search):", "").strip()
