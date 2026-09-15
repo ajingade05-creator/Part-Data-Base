@@ -9,7 +9,7 @@ st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def load_data():
     try:
         df = pd.read_csv(CSV_URL)
@@ -21,7 +21,6 @@ def load_data():
 
 df = load_data()
 
-# Sidebar Settings
 st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 50, 100, 50)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
@@ -41,23 +40,19 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # --- DETECT ALL LINK / DATASHEET COLUMNS ---
-            primary_ds_val = ""
-            alt_ds_val = ""
+            # --- TARGET EXPLICIT LINK COLUMNS ---
+            primary_url = ""
+            alt_url = ""
             
-            # Search for datasheet or link columns explicitly
             for col in df.columns:
                 col_lower = col.lower()
                 val = str(row[col]).strip()
-                if val and val != "-":
-                    if "data sheet" in col_lower or "datasheet" in col_lower or "link" in col_lower:
-                        if "alt" in col_lower or "cherry" in col_lower or "1" in col_lower:
-                            if not alt_ds_val:
-                                alt_ds_val = val
-                        else:
-                            if not primary_ds_val:
-                                primary_ds_val = val
-            
+                if "link" in col_lower and val.startswith("http"):
+                    if "cherry" in col_lower or "alt" in col_lower or "1" in col_lower:
+                        alt_url = val
+                    else:
+                        primary_url = val
+
             with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
                 
@@ -69,12 +64,10 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
                     
-                    if primary_ds_val.startswith("http"):
-                        st.link_button("📄 Open Primary Datasheet", primary_ds_val)
-                    elif primary_ds_val:
-                        st.write(f"📄 **Primary Datasheet:** `{primary_ds_val}` *(URL link pending in sheet)*")
+                    if primary_url:
+                        st.link_button("📄 Open Primary Datasheet", primary_url)
                     else:
-                        st.write("📄 **Primary Datasheet:** Not Listed")
+                        st.write("📄 **Primary Datasheet:** Link Not Available")
 
                 # Alternate Manufacturer & Equivalents
                 with col2:
@@ -104,12 +97,10 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    if alt_ds_val.startswith("http"):
-                        st.link_button("📄 Open Alternate Datasheet", alt_ds_val)
-                    elif alt_ds_val:
-                        st.write(f"📄 **Alt Datasheet:** `{alt_ds_val}` *(URL link pending in sheet)*")
+                    if alt_url:
+                        st.link_button("📄 Open Alternate Datasheet", alt_url)
                     else:
-                        st.write("📄 **Alt Datasheet:** Not Listed")
+                        st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
         st.warning("No matching parts found. Try lowering the match sensitivity slider.")
 
