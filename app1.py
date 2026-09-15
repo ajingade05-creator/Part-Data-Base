@@ -1,8 +1,8 @@
 import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
-from bs4 import BeautifulSoup
-import requests
+import urllib.request
+from html.parser import HTMLParser
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
@@ -18,39 +18,62 @@ st.markdown("""
 st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.caption("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
-# Published HTML URL (preserves true hyperlinks)
 PUBHTML_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pubhtml?gid=0&single=true"
+
+# Native HTML parser to extract tables & hidden <a> links
+class GoogleSheetsHTMLParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.rows = []
+        self.current_row = []
+        self.current_cell = ""
+        self.current_href = None
+        self.in_cell = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ['td', 'th']:
+            self.in_cell = True
+            self.current_cell = ""
+            self.current_href = None
+        elif tag == 'a' and self.in_cell:
+            for attr, val in attrs:
+                if attr == 'href':
+                    # Extract raw URL from Google wrapper redirect if present
+                    if 'google.com/url?q=' in val:
+                        val = val.split('google.com/url?q=')[1].split('&')[0]
+                    self.current_href = val
+
+    def handle_endtag(self, tag):
+        if tag in ['td', 'th']:
+            self.in_cell = False
+            cell_val = self.current_href if self.current_href else self.current_cell.strip()
+            self.current_row.append(cell_val)
+        elif tag == 'tr':
+            if self.current_row:
+                self.rows.append(self.current_row)
+                self.current_row = []
+
+    def handle_data(self, data):
+        if self.in_cell:
+            self.current_cell += data
 
 @st.cache_data(ttl=5)
 def load_data():
     try:
-        response = requests.get(PUBHTML_URL)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        table = soup.find('table')
+        req = urllib.request.Request(PUBHTML_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        html_content = urllib.request.urlopen(req).read().decode('utf-8')
         
-        rows = []
-        for tr in table.find_all('tr'):
-            row_data = []
-            for td in tr.find_all(['td', 'th']):
-                # Extract hidden URL if present inside an <a> tag
-                a_tag = td.find('a')
-                if a_tag and a_tag.get('href'):
-                    href = a_tag.get('href')
-                    # Clean Google redirection wrapper if present
-                    if 'google.com/url?q=' in href:
-                        href = href.split('google.com/url?q=')[1].split('&')[0]
-                    row_data.append(href)
-                else:
-                    row_data.append(td.get_text().strip())
-            if row_data:
-                rows.append(row_data)
-                
-        # First valid row as headers
-        df = pd.DataFrame(rows[1:], columns=rows[0])
-        df.columns = df.columns.str.strip()
-        return df.fillna("")
+        parser = GoogleSheetsHTMLParser()
+        parser.feed(html_content)
+        
+        if parser.rows:
+            # First row as header
+            df = pd.DataFrame(parser.rows[1:], columns=parser.rows[0])
+            df.columns = df.columns.str.strip()
+            return df.fillna("")
+        return pd.DataFrame()
     except Exception as e:
-        st.error(f"Error loading HTML sheet: {e}")
+        st.error(f"Error loading Google Sheet: {e}")
         return pd.DataFrame()
 
 df = load_data()
@@ -74,7 +97,7 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # Locate all extracted URLs in the row
+            # Collect URLs from row
             found_urls = []
             for col_idx in range(len(df.columns)):
                 cell_val = str(row.iloc[col_idx]).strip()
