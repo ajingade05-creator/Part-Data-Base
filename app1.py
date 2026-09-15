@@ -1,7 +1,6 @@
 import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
-from urllib.parse import quote
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
@@ -69,11 +68,8 @@ if query and not df.empty:
                     
                     if primary_val.startswith("http"):
                         st.link_button("📄 Open Primary Datasheet", primary_val)
-                    elif primary_val:
-                        # Renders as clickable text link using standard markdown
-                        st.markdown(f"📄 **Primary Datasheet:** [{primary_val}](https://avdelaero-my.sharepoint.com/search?q={quote(primary_val)})")
                     else:
-                        st.write("📄 **Primary Datasheet:** Link Not Available")
+                        st.write("📄 **Primary Datasheet:** Link Not Available in Sheet")
 
                 # Alternate Manufacturer & Equivalents
                 with col2:
@@ -105,10 +101,8 @@ if query and not df.empty:
                     
                     if alt_val.startswith("http"):
                         st.link_button("📄 Open Alternate Datasheet", alt_val)
-                    elif alt_val:
-                        st.markdown(f"📄 **Alt Datasheet:** [{alt_val}](https://avdelaero-my.sharepoint.com/search?q={quote(alt_val)})")
                     else:
-                        st.write("📄 **Alt Datasheet:** Link Not Available")
+                        st.write("📄 **Alt Datasheet:** Link Not Available in Sheet")
     else:
         st.warning("No matching parts found. Try lowering the match sensitivity slider.")
 
