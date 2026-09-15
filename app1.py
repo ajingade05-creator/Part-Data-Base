@@ -73,14 +73,13 @@ st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 30, 100, 75)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
-query = st.text_input("Enter Part Number or Standard:", placeholder="e.g., AF5141, CCR264, or NASM20605").strip()
+query = st.text_input("Enter Part Number or Standard:", placeholder="e.g., AF5141, CCR264, or MS20605").strip()
 
 if query and not df.empty:
     search_cols = [c for c in df.columns if any(k in c.lower() for k in ["part", "p/n", "standard"])]
     search_records = {}
     query_clean = query.lower()
 
-    # Smart Search: Prioritize Exact Substrings, fallback to Fuzzy Typos
     for col in search_cols:
         col_values = df[col].astype(str).tolist()
         
@@ -91,10 +90,8 @@ if query and not df.empty:
             
             val_clean = val_str.lower()
             
-            # 1. Exact Substring Match (e.g. searching 'ccr264' hits 'CCR264-3-01PR' automatically)
             if query_clean in val_clean:
                 score = 100.0
-            # 2. Fuzzy Match Backup (for typos)
             else:
                 score = fuzz.WRatio(query_clean, val_clean)
             
@@ -176,19 +173,25 @@ if query and not df.empty:
                     st.markdown("---")
                     st.markdown("**All Alternate & MS/NASM Part Numbers:**")
                     
+                    # ROBUST SCAN FOR ALL ALTERNATE & MS/NASM PAIRS ACROSS COLUMNS
                     pairs_found = False
-                    for i in range(len(df.columns)):
-                        col_header = df.columns[i].lower()
-                        if "alt." in col_header or "alt part" in col_header:
+                    col_list = list(df.columns)
+                    i = 0
+                    while i < len(col_list):
+                        col_header = col_list[i].lower()
+                        if "alt." in col_header or "alt part" in col_header or "part no" in col_header:
                             pn_val = str(row.iloc[i]).strip()
                             
+                            # Look ahead for standard column
                             std_val = "-"
-                            if i + 1 < len(df.columns) and "standard" in df.columns[i + 1].lower():
+                            if i + 1 < len(col_list) and "standard" in col_list[i + 1].lower():
                                 std_val = str(row.iloc[i + 1]).strip()
+                                i += 1 # skip standard column on next loop
                             
-                            if pn_val and pn_val != "-" and not pn_val.startswith("http") and not pn_val.endswith(".pdf"):
+                            if pn_val and pn_val != "-" and pn_val != primary_pn and not pn_val.startswith("http") and not pn_val.endswith(".pdf"):
                                 st.write(f"• **Part No:** `{pn_val}` | **Standard:** `{std_val if std_val else '-'}`")
                                 pairs_found = True
+                        i += 1
 
                     if not pairs_found:
                         st.write("• *No alternate parts listed*")
