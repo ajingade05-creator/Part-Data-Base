@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
+import urllib.request
 import re
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
@@ -18,24 +19,41 @@ st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.caption("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
+PUBHTML_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pubhtml?gid=0&single=true"
 
 @st.cache_data(ttl=2)
 def load_data():
     try:
+        # Load structured data via CSV
         df = pd.read_csv(CSV_URL)
         df.columns = df.columns.str.strip()
-        return df.fillna("")
-    except Exception as e:
-        st.error(f"Error loading database sheet: {e}")
-        return pd.DataFrame()
+        df = df.fillna("")
 
-df = load_data()
+        # Extract underlying hyperlinks from HTML stream
+        req = urllib.request.Request(PUBHTML_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        html_str = urllib.request.urlopen(req).read().decode('utf-8')
+        
+        # Match all href targets embedded in published sheet
+        raw_hrefs = re.findall(r'href=["\'](.*?)["\']', html_str)
+        cleaned_urls = []
+        for h in raw_hrefs:
+            if 'google.com/url?q=' in h:
+                h = h.split('google.com/url?q=')[1].split('&')[0]
+            if h.startswith("http") and "pubhtml" not in h and "google" not in h:
+                cleaned_urls.append(h)
+                
+        return df, cleaned_urls
+    except Exception as e:
+        st.error(f"Error loading database: {e}")
+        return pd.DataFrame(), []
+
+df, extracted_urls = load_data()
 
 st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 30, 100, 75)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
-query = st.text_input("Enter Part Number:", placeholder="e.g., AF5141-3-01PR").strip()
+query = st.text_input("Enter Part Number:", placeholder="e.g., AF5141-3-12PR").strip()
 
 if query and not df.empty:
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
@@ -65,17 +83,20 @@ if query and not df.empty:
                             if not primary_val:
                                 primary_val = val
 
-            # ONLY RESOLVE REAL HTTP/HTTPS LINKS
-            def extract_valid_url(val):
+            def resolve_url(val):
                 if not val or val == "-":
                     return None
                 urls = re.findall(r'https?://[^\s,"]+', val)
                 if urls:
                     return urls[0]
+                # Match filename string to scraped HTML URLs
+                for u in extracted_urls:
+                    if val.replace(" ", "").lower() in u.lower():
+                        return u
                 return None
 
-            primary_url = extract_valid_url(primary_val)
-            alt_url = extract_valid_url(alt_val)
+            primary_url = resolve_url(primary_val)
+            alt_url = resolve_url(alt_val)
 
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
