@@ -31,7 +31,6 @@ def load_data():
 
 df = load_data()
 
-# Helper to extract clean URL from text
 def extract_url(val):
     val = str(val).strip()
     if val and val != "-" and not val.startswith("#"):
@@ -40,7 +39,6 @@ def extract_url(val):
             return urls[0]
     return None
 
-# Helper to normalize series prefixes (e.g. 'AF5141-3-01' -> 'AF5141')
 def get_base_prefix(pn):
     pn = str(pn).strip().upper()
     match = re.match(r'^([A-Z0-9]{4,6})', pn)
@@ -50,26 +48,23 @@ PRIMARY_SERIES_MAP = {}
 ALT_SERIES_MAP = {}
 
 if not df.empty:
+    # Identify primary part number column for the UI display
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
-    target_col = pn_cols[0] if pn_cols else df.columns[1]
+    primary_pn_col = pn_cols[0] if pn_cols else df.columns[1]
 
-    # Find ALL datasheet columns to ensure we catch formula columns at the end (e.g. Column O & P)
+    # Identify datasheet columns
     primary_ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link", "url"]) and not any(k in c.lower() for k in ["cherry", "alt"])]
     alt_ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link", "url"]) and any(k in c.lower() for k in ["cherry", "alt"])]
 
-    # Build fallback dictionary scanning all valid rows across all matching columns
+    # Build fallback maps
     for _, r in df.iterrows():
-        prefix = get_base_prefix(r[target_col])
-        
-        # Build Primary Map
+        prefix = get_base_prefix(r[primary_pn_col])
         if prefix not in PRIMARY_SERIES_MAP:
             for col in primary_ds_cols:
                 u = extract_url(r[col])
                 if u:
                     PRIMARY_SERIES_MAP[prefix] = u
                     break
-
-        # Build Alternate Map
         if prefix not in ALT_SERIES_MAP:
             for col in alt_ds_cols:
                 u = extract_url(r[col])
@@ -81,24 +76,43 @@ st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 30, 100, 75)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
-query = st.text_input("Enter Part Number:", placeholder="e.g., AF5141-3-01").strip()
+query = st.text_input("Enter Part Number or Standard:", placeholder="e.g., AF5141, CCR264, or NASM20605").strip()
 
 if query and not df.empty:
-    pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
-    target_col = pn_cols[0] if pn_cols else df.columns[1]
+    # Identify all columns that might contain a part number or standard to search against
+    search_cols = [c for c in df.columns if any(k in c.lower() for k in ["part", "p/n", "standard"])]
     
-    part_numbers = df[target_col].astype(str).tolist()
+    search_records = {}
+
+    # Scan through all relevant columns to find the highest match per row
+    for col in search_cols:
+        col_values = df[col].astype(str).tolist()
+        matches = process.extract(query, col_values, scorer=fuzz.WRatio, limit=50)
+        
+        for match_str, score, row_idx in matches:
+            if float(score) >= float(similarity_threshold) and match_str.strip() not in ["", "-"]:
+                # If we found a better match for this row in this column, update it
+                if row_idx not in search_records or score > search_records[row_idx]['score']:
+                    search_records[row_idx] = {
+                        'score': float(score), 
+                        'matched_term': match_str,
+                        'matched_col': col
+                    }
     
-    raw_matches = process.extract(query, part_numbers, scorer=fuzz.WRatio, limit=50)
-    filtered = [m for m in raw_matches if float(m[1]) >= float(similarity_threshold)][:int(max_results)]
+    # Sort the combined results by highest score and limit to max_results
+    filtered = sorted(search_records.items(), key=lambda x: x[1]['score'], reverse=True)[:int(max_results)]
     
     if filtered:
         st.subheader(f"Results for '{query}':")
-        for matched_pn, score, index in filtered:
-            row = df.iloc[index]
-            prefix = get_base_prefix(matched_pn)
+        for row_idx, match_data in filtered:
+            row = df.iloc[row_idx]
+            score = match_data['score']
+            matched_term = match_data['matched_term']
             
-            # --- Primary Link Resolution ---
+            primary_pn = str(row[primary_pn_col]).strip()
+            prefix = get_base_prefix(primary_pn)
+            
+            # --- Link Resolution ---
             primary_text = ""
             primary_url = None
             for col in primary_ds_cols:
@@ -109,11 +123,9 @@ if query and not df.empty:
                 elif val and val != "-" and not val.startswith("http") and not val.startswith("#") and not primary_text:
                     primary_text = val
             
-            # Borrow from another row in the same series if current row is broken
             if not primary_url:
                 primary_url = PRIMARY_SERIES_MAP.get(prefix)
 
-            # --- Alternate Link Resolution ---
             alt_text = ""
             alt_url = None
             for col in alt_ds_cols:
@@ -124,18 +136,23 @@ if query and not df.empty:
                 elif val and val != "-" and not val.startswith("http") and not val.startswith("#") and not alt_text:
                     alt_text = val
             
-            # Borrow from another row in the same series if current row is broken
             if not alt_url:
                 alt_url = ALT_SERIES_MAP.get(prefix)
 
-            with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
+            # Update expander title to show what specifically matched (e.g., if they searched NASM)
+            expander_title = f"📌 **{primary_pn}** "
+            if matched_term != primary_pn:
+                expander_title += f"*(Matched via: {matched_term})* "
+            expander_title += f"| Match Score: **{int(score)}%**"
+
+            with st.expander(expander_title, expanded=True):
                 col1, col2 = st.columns(2)
                 
                 # Primary Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
-                    st.write(f"**Part Number:** `{matched_pn}`")
+                    st.write(f"**Part Number:** `{primary_pn}`")
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** `{row.get('Standard', 'N/A')}`")
                     
