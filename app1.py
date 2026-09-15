@@ -41,18 +41,27 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # --- UNIVERSAL LINK DETECTOR ---
-            # Collect all HTTP/HTTPS URLs present anywhere in this row
-            all_urls = []
+            # --- DETECT ALL LINK / DATASHEET COLUMNS ---
+            primary_ds_val = ""
+            alt_ds_val = ""
+            
+            # Search for datasheet or link columns explicitly
             for col in df.columns:
+                col_lower = col.lower()
                 val = str(row[col]).strip()
-                if val.startswith("http"):
-                    all_urls.append((col, val))
+                if val and val != "-":
+                    if "data sheet" in col_lower or "datasheet" in col_lower or "link" in col_lower:
+                        if "alt" in col_lower or "cherry" in col_lower or "1" in col_lower:
+                            if not alt_ds_val:
+                                alt_ds_val = val
+                        else:
+                            if not primary_ds_val:
+                                primary_ds_val = val
             
             with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Manufacturer (Allfast)
+                # Primary Manufacturer
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -60,11 +69,12 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
                     
-                    # Grab first available URL in row for Primary
-                    if len(all_urls) > 0:
-                        st.link_button(f"📄 Open Primary Datasheet", all_urls[0][1])
+                    if primary_ds_val.startswith("http"):
+                        st.link_button("📄 Open Primary Datasheet", primary_ds_val)
+                    elif primary_ds_val:
+                        st.write(f"📄 **Primary Datasheet:** `{primary_ds_val}` *(URL link pending in sheet)*")
                     else:
-                        st.write("📄 **Primary Datasheet:** Link Not Available in Sheet")
+                        st.write("📄 **Primary Datasheet:** Not Listed")
 
                 # Alternate Manufacturer & Equivalents
                 with col2:
@@ -94,11 +104,12 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    # Grab second available URL in row for Alternate (if present)
-                    if len(all_urls) > 1:
-                        st.link_button(f"📄 Open Alternate Datasheet", all_urls[1][1])
+                    if alt_ds_val.startswith("http"):
+                        st.link_button("📄 Open Alternate Datasheet", alt_ds_val)
+                    elif alt_ds_val:
+                        st.write(f"📄 **Alt Datasheet:** `{alt_ds_val}` *(URL link pending in sheet)*")
                     else:
-                        st.write("📄 **Alt Datasheet:** Link Not Available in Sheet")
+                        st.write("📄 **Alt Datasheet:** Not Listed")
     else:
         st.warning("No matching parts found. Try lowering the match sensitivity slider.")
 
