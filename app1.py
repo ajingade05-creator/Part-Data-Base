@@ -1,8 +1,7 @@
 import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
-import urllib.request
-from html.parser import HTMLParser
+import re
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
@@ -18,62 +17,16 @@ st.markdown("""
 st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.caption("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
-PUBHTML_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pubhtml?gid=0&single=true"
+CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
-# Native HTML parser to extract tables & hidden <a> links
-class GoogleSheetsHTMLParser(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.rows = []
-        self.current_row = []
-        self.current_cell = ""
-        self.current_href = None
-        self.in_cell = False
-
-    def handle_starttag(self, tag, attrs):
-        if tag in ['td', 'th']:
-            self.in_cell = True
-            self.current_cell = ""
-            self.current_href = None
-        elif tag == 'a' and self.in_cell:
-            for attr, val in attrs:
-                if attr == 'href':
-                    # Extract raw URL from Google wrapper redirect if present
-                    if 'google.com/url?q=' in val:
-                        val = val.split('google.com/url?q=')[1].split('&')[0]
-                    self.current_href = val
-
-    def handle_endtag(self, tag):
-        if tag in ['td', 'th']:
-            self.in_cell = False
-            cell_val = self.current_href if self.current_href else self.current_cell.strip()
-            self.current_row.append(cell_val)
-        elif tag == 'tr':
-            if self.current_row:
-                self.rows.append(self.current_row)
-                self.current_row = []
-
-    def handle_data(self, data):
-        if self.in_cell:
-            self.current_cell += data
-
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=2)
 def load_data():
     try:
-        req = urllib.request.Request(PUBHTML_URL, headers={'User-Agent': 'Mozilla/5.0'})
-        html_content = urllib.request.urlopen(req).read().decode('utf-8')
-        
-        parser = GoogleSheetsHTMLParser()
-        parser.feed(html_content)
-        
-        if parser.rows:
-            # First row as header
-            df = pd.DataFrame(parser.rows[1:], columns=parser.rows[0])
-            df.columns = df.columns.str.strip()
-            return df.fillna("")
-        return pd.DataFrame()
+        df = pd.read_csv(CSV_URL)
+        df.columns = df.columns.str.strip()
+        return df.fillna("")
     except Exception as e:
-        st.error(f"Error loading Google Sheet: {e}")
+        st.error(f"Error loading database sheet: {e}")
         return pd.DataFrame()
 
 df = load_data()
@@ -97,12 +50,14 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # Collect URLs from row
+            # Positional link finder scanning every column in row
             found_urls = []
             for col_idx in range(len(df.columns)):
                 cell_val = str(row.iloc[col_idx]).strip()
-                if cell_val.startswith("http") and not cell_val.startswith("#"):
-                    found_urls.append(cell_val)
+                # Extract URL if cell contains http/https
+                urls = re.findall(r'https?://[^\s,"]+', cell_val)
+                if urls:
+                    found_urls.extend(urls)
 
             primary_url = found_urls[0] if len(found_urls) > 0 else ""
             alt_url = found_urls[1] if len(found_urls) > 1 else ""
@@ -110,7 +65,7 @@ if query and not df.empty:
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Panel
+                # Primary Manufacturer Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -123,7 +78,7 @@ if query and not df.empty:
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Panel
+                # Alternate Manufacturer Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} (Equivalents)")
