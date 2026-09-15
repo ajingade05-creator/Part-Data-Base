@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
 import re
+from urllib.parse import quote
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
@@ -50,22 +51,39 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # Positional link finder scanning every column in row
-            found_urls = []
-            for col_idx in range(len(df.columns)):
-                cell_val = str(row.iloc[col_idx]).strip()
-                # Extract URL if cell contains http/https
-                urls = re.findall(r'https?://[^\s,"]+', cell_val)
-                if urls:
-                    found_urls.extend(urls)
+            primary_val = ""
+            alt_val = ""
+            
+            # Target exact columns explicitly by header intent
+            for col in df.columns:
+                c_lower = col.lower()
+                val = str(row[col]).strip()
+                if val and val != "-" and not val.startswith("#"):
+                    if any(k in c_lower for k in ["sheet", "link", "url"]):
+                        if any(k in c_lower for k in ["cherry", "alt"]):
+                            alt_val = val
+                        else:
+                            primary_val = val
 
-            primary_url = found_urls[0] if len(found_urls) > 0 else ""
-            alt_url = found_urls[1] if len(found_urls) > 1 else ""
+            # Function to parse value into standard button target
+            def resolve_link(val):
+                if not val or val == "-":
+                    return None
+                urls = re.findall(r'https?://[^\s,"]+', val)
+                if urls:
+                    return urls[0]
+                # If cell contains raw filename (e.g. CCR264.pdf), build sharepoint search query link
+                if val.endswith(".pdf") or len(val) > 2:
+                    return f"https://avdelaero-my.sharepoint.com/_layouts/15/search.aspx?q={quote(val)}"
+                return None
+
+            primary_url = resolve_link(primary_val)
+            alt_url = resolve_link(alt_val)
 
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Manufacturer Panel
+                # Primary Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -78,7 +96,7 @@ if query and not df.empty:
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Manufacturer Panel
+                # Alternate Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} (Equivalents)")
@@ -107,7 +125,7 @@ if query and not df.empty:
                     st.markdown("---")
                     
                     if alt_url:
-                        st.link_button("📄 Open Alternate Datasheet", alt_url, use_container_width=True)
+                        st.link_button(f"📄 Open Alternate Datasheet ({alt_val})", alt_url, use_container_width=True)
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
