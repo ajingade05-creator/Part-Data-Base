@@ -43,8 +43,10 @@ if query and not df.empty:
     target_col = pn_cols[0] if pn_cols else df.columns[1]
     
     part_numbers = df[target_col].astype(str).tolist()
-    matches = process.extract(query, part_numbers, scorer=fuzz.WRatio, limit=max_results)
-    filtered = [m for m in matches if m[1] >= similarity_threshold]
+    
+    # Extract matches and strictly filter out any match below the slider threshold
+    raw_matches = process.extract(query, part_numbers, scorer=fuzz.WRatio, limit=50)
+    filtered = [m for m in raw_matches if float(m[1]) >= float(similarity_threshold)][:int(max_results)]
     
     if filtered:
         st.subheader(f"Results for '{query}':")
@@ -81,7 +83,7 @@ if query and not df.empty:
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Manufacturer Panel
+                # Primary Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -95,7 +97,7 @@ if query and not df.empty:
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Manufacturer & MS/NASM Equivalents Panel
+                # Alternate Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} / MS (Equivalents)")
@@ -128,7 +130,7 @@ if query and not df.empty:
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
-        st.warning("No matching parts found. Try lowering the match sensitivity slider.")
+        st.warning(f"No matching parts found with a score of {similarity_threshold}% or higher. Try lowering the match sensitivity slider.")
 
 st.markdown("---")
 with st.expander("🔍 View Complete Database Table"):
