@@ -4,7 +4,7 @@ from rapidfuzz import process, fuzz
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
-# Avdel India Official Branding Colors (Steel Blue, Deep Navy, Light Gray, Clean White)
+# Avdel India Corporate Styling
 st.markdown("""
     <style>
     :root {
@@ -16,13 +16,11 @@ st.markdown("""
         --avdel-text: #1E293B;
     }
     
-    /* Main Background */
     .stApp {
         background-color: var(--avdel-bg);
         color: var(--avdel-text);
     }
     
-    /* Title styling */
     h1 {
         color: var(--avdel-navy) !important;
         font-weight: 700;
@@ -30,30 +28,35 @@ st.markdown("""
         padding-bottom: 8px;
     }
     
-    /* Sidebar styling */
+    /* Input box label readability fix */
+    label, p, span {
+        color: #1E293B !important;
+    }
+    
+    [data-testid="stSidebar"] label, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] h2 {
+        color: #FFFFFF !important;
+    }
+    
     [data-testid="stSidebar"] {
         background-color: var(--avdel-navy) !important;
-        color: #FFFFFF !important;
     }
     
-    [data-testid="stSidebar"] * {
-        color: #FFFFFF !important;
-    }
-    
-    /* Slider Track Accent */
     div[data-baseweb="slider"] div {
         background-color: var(--avdel-blue) !important;
     }
     
-    /* Result Expanders styled like web cards */
+    /* Expander styling clean-up */
     .streamlit-expanderHeader {
-        background-color: var(--avdel-card) !important;
-        border-left: 5px solid var(--avdel-blue) !important;
-        color: var(--avdel-navy) !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        background-color: var(--avdel-navy) !important;
+        color: #FFFFFF !important;
+        border-radius: 4px;
+        font-weight: 600;
     }
     
-    /* Action Buttons in Steel Blue */
+    .streamlit-expanderHeader p, .streamlit-expanderHeader span, .streamlit-expanderHeader div {
+        color: #FFFFFF !important;
+    }
+    
     .stButton>button, .stLinkButton>a {
         background-color: var(--avdel-blue) !important;
         color: white !important;
@@ -69,7 +72,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("✈️ Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
+# Title without airplane emoji
+st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
@@ -86,7 +90,6 @@ def load_data():
 
 df = load_data()
 
-# Sidebar controls - Label updated to Match Sensitivity (%)
 st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 50, 100, 50)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
@@ -108,7 +111,7 @@ if query and not df.empty:
             with st.expander(f"📌 **{matched_pn}** (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Manufacturer Details (Allfast)
+                # Primary Manufacturer
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
