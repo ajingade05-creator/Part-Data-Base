@@ -1,11 +1,15 @@
 import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
+from urllib.parse import quote
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
 st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
+
+# Paste your actual folder URL prefix here:
+SHAREPOINT_BASE_URL = "https://avdelaero-my.sharepoint.com/:b:/g/personal/YOUR_PATH_HERE/"
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
@@ -27,6 +31,15 @@ max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
 
 query = st.text_input("Enter Part Number (typo-tolerant search):", "").strip()
 
+def make_clickable_url(val):
+    val = str(val).strip()
+    if not val or val == "-":
+        return None
+    if val.startswith("http"):
+        return val
+    # Append raw filename to base URL and encode spaces (%20)
+    return SHAREPOINT_BASE_URL + quote(val)
+
 if query and not df.empty:
     pn_cols = [c for c in df.columns if any(w in c.lower() for w in ["part no", "part number", "p/n"])]
     target_col = pn_cols[0] if pn_cols else df.columns[1]
@@ -40,7 +53,6 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # Identify columns with links or datasheets
             ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link"])]
             
             primary_val = ""
@@ -67,10 +79,9 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
                     
-                    if primary_val.startswith("http"):
-                        st.link_button("📄 Open Primary Datasheet", primary_val)
-                    elif primary_val:
-                        st.write(f"📄 **Primary Datasheet:** `{primary_val}` *(Full link not evaluated in Sheet)*")
+                    primary_url = make_clickable_url(primary_val)
+                    if primary_url:
+                        st.link_button("📄 Open Primary Datasheet", primary_url)
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
@@ -102,10 +113,9 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    if alt_val.startswith("http"):
-                        st.link_button("📄 Open Alternate Datasheet", alt_val)
-                    elif alt_val:
-                        st.write(f"📄 **Alt Datasheet:** `{alt_val}` *(Full link not evaluated in Sheet)*")
+                    alt_url = make_clickable_url(alt_val)
+                    if alt_url:
+                        st.link_button("📄 Open Alternate Datasheet", alt_url)
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
