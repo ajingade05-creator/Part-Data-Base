@@ -4,75 +4,6 @@ from rapidfuzz import process, fuzz
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
-# Avdel India Corporate Styling
-st.markdown("""
-    <style>
-    :root {
-        --avdel-blue: #3182CE;
-        --avdel-blue-hover: #2B6CB0;
-        --avdel-navy: #0F2942;
-        --avdel-bg: #F8FAFC;
-        --avdel-card: #FFFFFF;
-        --avdel-text: #1E293B;
-    }
-    
-    .stApp {
-        background-color: var(--avdel-bg);
-        color: var(--avdel-text);
-    }
-    
-    h1 {
-        color: var(--avdel-navy) !important;
-        font-weight: 700;
-        border-bottom: 3px solid var(--avdel-blue);
-        padding-bottom: 8px;
-    }
-    
-    /* Input box label readability fix */
-    label, p, span {
-        color: #1E293B !important;
-    }
-    
-    [data-testid="stSidebar"] label, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] h2 {
-        color: #FFFFFF !important;
-    }
-    
-    [data-testid="stSidebar"] {
-        background-color: var(--avdel-navy) !important;
-    }
-    
-    div[data-baseweb="slider"] div {
-        background-color: var(--avdel-blue) !important;
-    }
-    
-    /* Expander styling clean-up */
-    .streamlit-expanderHeader {
-        background-color: var(--avdel-navy) !important;
-        color: #FFFFFF !important;
-        border-radius: 4px;
-        font-weight: 600;
-    }
-    
-    .streamlit-expanderHeader p, .streamlit-expanderHeader span, .streamlit-expanderHeader div {
-        color: #FFFFFF !important;
-    }
-    
-    .stButton>button, .stLinkButton>a {
-        background-color: var(--avdel-blue) !important;
-        color: white !important;
-        border-radius: 4px !important;
-        border: none !important;
-        font-weight: 600 !important;
-    }
-    
-    .stButton>button:hover, .stLinkButton>a:hover {
-        background-color: var(--avdel-blue-hover) !important;
-        color: white !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# Title without airplane emoji
 st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
@@ -90,6 +21,7 @@ def load_data():
 
 df = load_data()
 
+# Sidebar
 st.sidebar.header("Search Settings")
 similarity_threshold = st.sidebar.slider("Match Sensitivity (%)", 50, 100, 50)
 max_results = st.sidebar.number_input("Max Results", 1, 20, 5)
@@ -108,7 +40,7 @@ if query and not df.empty:
         st.subheader(f"Results for '{query}':")
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
-            with st.expander(f"📌 **{matched_pn}** (Match Score: {int(score)}%)", expanded=True):
+            with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
                 
                 # Primary Manufacturer
@@ -127,14 +59,14 @@ if query and not df.empty:
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Manufacturer & Position-Based Pairing
+                # Alternate Manufacturer & Equivalents
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} (Equivalents)")
                     st.write(f"**Alt. Description:** {row.get('Description.1', 'N/A')}")
                     
                     st.markdown("---")
-                    st.markdown("#### 🔗 All Alternate Part Numbers & Standards")
+                    st.markdown("**All Alternate Part Numbers & Standards:**")
                     
                     pairs_found = False
                     for i in range(len(df.columns)):
