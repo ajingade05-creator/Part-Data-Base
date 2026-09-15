@@ -4,17 +4,8 @@ from rapidfuzz import process, fuzz
 
 st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 
-st.markdown("""
-    <style>
-    .stApp {
-        background-color: #0F172A;
-        color: #F8FAFC;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
-st.caption("Search aerospace part numbers with typo-tolerance to retrieve specs, equivalents, and datasheets.")
+st.caption("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
@@ -49,7 +40,6 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            # Extract links or PDF filename strings
             ds_cols = [c for c in df.columns if any(k in c.lower() for k in ["sheet", "link", "url"])]
             
             primary_val = ""
@@ -69,7 +59,7 @@ if query and not df.empty:
             with st.expander(f"📌 **{matched_pn}** | Match Score: **{int(score)}%**", expanded=True):
                 col1, col2 = st.columns(2)
                 
-                # Primary Panel
+                # Primary Manufacturer Panel
                 with col1:
                     mfg1 = row.get('Manufacturer', 'Primary Manufacturer')
                     st.markdown(f"### {mfg1} (Primary)")
@@ -80,11 +70,11 @@ if query and not df.empty:
                     if primary_val.startswith("http"):
                         st.link_button("📄 Open Primary Datasheet", primary_val, use_container_width=True)
                     elif primary_val:
-                        st.write(f"📄 **Primary Datasheet:** `{primary_val}` *(URL link hidden in sheet)*")
+                        st.write(f"📄 **Primary Datasheet:** `{primary_val}`")
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available")
 
-                # Alternate Panel
+                # Alternate Manufacturer Panel
                 with col2:
                     mfg2 = row.get('Manufacturer.1', 'Alternate Manufacturer')
                     st.markdown(f"### {mfg2} (Equivalents)")
@@ -113,9 +103,9 @@ if query and not df.empty:
                     st.markdown("---")
                     
                     if alt_val.startswith("http"):
-                        st.link_button("📄 Open Alternate Datasheet", alt_url, use_container_width=True)
+                        st.link_button("📄 Open Alternate Datasheet", alt_val, use_container_width=True)
                     elif alt_val:
-                        st.write(f"📄 **Alt Datasheet:** `{alt_val}` *(URL link hidden in sheet)*")
+                        st.write(f"📄 **Alt Datasheet:** `{alt_val}`")
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available")
     else:
