@@ -7,6 +7,7 @@ st.set_page_config(page_title="Avdel India - Part Lookup", layout="wide")
 st.title("Avdel (India) Pvt. Ltd. — Part Search & Equivalents")
 st.markdown("Search aerospace part numbers with typo tolerance to retrieve specs, equivalents, and datasheets.")
 
+# Direct published CSV endpoint
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQciyZmZLWUmLBF6nKgVqDlpjkqRGh6N_1HlmiZRtrgsRr_nVJLoUJiAzsYetJkcHsBXIVbUtgfiTGq/pub?output=csv"
 
 @st.cache_data(ttl=2)
@@ -40,20 +41,16 @@ if query and not df.empty:
         for matched_pn, score, index in filtered:
             row = df.iloc[index]
             
-            primary_val = ""
-            alt_val = ""
-            
-            for col in df.columns:
-                c_lower = col.lower()
-                val = str(row[col]).strip()
-                if val and val != "-":
-                    if any(k in c_lower for k in ["sheet", "link", "url"]):
-                        if any(k in c_lower for k in ["alt", "cherry", "1"]):
-                            if not alt_val:
-                                alt_val = val
-                        else:
-                            if not primary_val:
-                                primary_val = val
+            # --- POSITIONAL LINK RESOLVER ---
+            found_urls = []
+            for col_idx in range(len(df.columns)):
+                cell_val = str(row.iloc[col_idx]).strip()
+                # Ignores '#NAME?' errors and checks for valid web URLs
+                if cell_val.lower().startswith("http") and not cell_val.startswith("#"):
+                    found_urls.append(cell_val)
+
+            primary_url = found_urls[0] if len(found_urls) > 0 else ""
+            alt_url = found_urls[1] if len(found_urls) > 1 else ""
 
             with st.expander(f"📌 {matched_pn} (Match Score: {int(score)}%)", expanded=True):
                 col1, col2 = st.columns(2)
@@ -66,8 +63,8 @@ if query and not df.empty:
                     st.write(f"**Description:** {row.get('Description', 'N/A')}")
                     st.write(f"**Standard:** {row.get('Standard', 'N/A')}")
                     
-                    if primary_val.startswith("http"):
-                        st.link_button("📄 Open Primary Datasheet", primary_val)
+                    if primary_url:
+                        st.link_button("📄 Open Primary Datasheet", primary_url)
                     else:
                         st.write("📄 **Primary Datasheet:** Link Not Available in Sheet")
 
@@ -90,7 +87,7 @@ if query and not df.empty:
                             if i + 1 < len(df.columns) and "standard" in df.columns[i + 1].lower():
                                 std_val = str(row.iloc[i + 1]).strip()
                             
-                            if pn_val and pn_val != "-":
+                            if pn_val and pn_val != "-" and not pn_val.startswith("http"):
                                 st.write(f"• **Alt Part No:** `{pn_val}` | **Standard:** `{std_val if std_val else '-'}`")
                                 pairs_found = True
 
@@ -99,8 +96,8 @@ if query and not df.empty:
                     
                     st.markdown("---")
                     
-                    if alt_val.startswith("http"):
-                        st.link_button("📄 Open Alternate Datasheet", alt_val)
+                    if alt_url:
+                        st.link_button("📄 Open Alternate Datasheet", alt_url)
                     else:
                         st.write("📄 **Alt Datasheet:** Link Not Available in Sheet")
     else:
